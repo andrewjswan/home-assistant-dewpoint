@@ -2,7 +2,7 @@
 Calculate Dew Point based on temperature and humidity sensors
 
 For more details about this platform, please refer to the documentation
-https://github.com/miguelangel-nubla/home-assistant-dewpoint
+https://github.com/andrewjswan/home-assistant-dewpoint
 """
 
 import logging
@@ -10,14 +10,14 @@ import asyncio
 
 import voluptuous as vol
 
-
 from homeassistant import util
-from homeassistant.core import callback
+from homeassistant.core import Event, EventStateChangedData, callback
 from homeassistant.const import (
-    TEMP_CELSIUS, TEMP_FAHRENHEIT, ATTR_FRIENDLY_NAME, ATTR_ENTITY_ID, CONF_SENSORS,
+    UnitOfTemperature,
+    ATTR_FRIENDLY_NAME, ATTR_ENTITY_ID, CONF_SENSORS,
     EVENT_HOMEASSISTANT_START, ATTR_UNIT_OF_MEASUREMENT, ATTR_TEMPERATURE)
 from homeassistant.helpers.entity import Entity, async_generate_entity_id
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change_event
 import homeassistant.helpers.config_validation as cv
 
 from homeassistant.components.sensor import (
@@ -66,14 +66,14 @@ class DewPointSensor(Entity):
     async def async_added_to_hass(self):
         """Register callbacks."""
         @callback
-        def sensor_state_listener(entity, old_state, new_state):
+        def sensor_state_listener(event: Event[EventStateChangedData]) -> None:
             """Handle device state changes."""
             self.async_schedule_update_ha_state(True)
 
         @callback
         def sensor_startup(event):
             """Update template on startup."""
-            async_track_state_change(
+            async_track_state_change_event(
                 self.hass, [self._entity_dry_temp, self._entity_rel_hum], sensor_state_listener)
 
             self.async_schedule_update_ha_state(True)
@@ -99,7 +99,7 @@ class DewPointSensor(Entity):
     @property
     def unit_of_measurement(self):
         """Return the unit of measurement."""
-        return TEMP_CELSIUS
+        return UnitOfTemperature.CELSIUS
 
     @callback
     def get_dry_temp(self, entity):
@@ -118,13 +118,13 @@ class DewPointSensor(Entity):
             return None
 
         # convert to celsius if necessary
-        if unit == TEMP_FAHRENHEIT:
+        if unit == UnitOfTemperature.FAHRENHEIT:
             return util.temperature.fahrenheit_to_celsius(temp)
-        if unit == TEMP_CELSIUS:
+        if unit == UnitOfTemperature.CELSIUS:
             return temp
         _LOGGER.error("Temp sensor %s has unsupported unit: %s (allowed: %s, "
-                      "%s)", state.entity_id, unit, TEMP_CELSIUS,
-                      TEMP_FAHRENHEIT)
+                      "%s)", state.entity_id, unit, UnitOfTemperature.CELSIUS,
+                      UnitOfTemperature.FAHRENHEIT)
 
         try:
             return self.hass.config.units.temperature(
