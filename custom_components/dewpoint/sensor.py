@@ -1,9 +1,4 @@
-"""
-Calculate Dew Point based on temperature and humidity sensors
-
-For more details about this platform, please refer to the documentation
-https://github.com/andrewjswan/home-assistant-dewpoint
-"""
+"""Calculate Dew Point based on temperature and humidity sensors."""
 
 import logging
 import asyncio
