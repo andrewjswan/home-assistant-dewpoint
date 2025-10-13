@@ -5,17 +5,24 @@ import logging
 import voluptuous as vol
 
 from homeassistant import util
-from homeassistant.core import Event, EventStateChangedData, callback
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.const import (
-    UnitOfTemperature,
-    ATTR_FRIENDLY_NAME, CONF_SENSORS,
-    EVENT_HOMEASSISTANT_START, ATTR_UNIT_OF_MEASUREMENT, ATTR_TEMPERATURE)
+    ATTR_FRIENDLY_NAME,
+    ATTR_TEMPERATURE,
+    ATTR_UNIT_OF_MEASUREMENT,
+    CONF_SENSORS,
+    EVENT_HOMEASSISTANT_START,
+    UnitOfTemperature)
 from homeassistant.helpers.entity import Entity, async_generate_entity_id
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 import homeassistant.helpers.config_validation as cv
 
 from homeassistant.components.sensor import (
     ENTITY_ID_FORMAT, PLATFORM_SCHEMA)
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +41,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_add_entities: AddEntitiesCallback, discovery_info: DiscoveryInfoType | None = None) -> None:
     """Setup the sensor platform."""
-
     for device, device_config in config[CONF_SENSORS].items():
         friendly_name = device_config.get(ATTR_FRIENDLY_NAME, device)
         entity_dry_temp = device_config.get(ATTR_TEMPERATURE)
@@ -44,13 +50,14 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
 
 
 class DewPointSensor(Entity):
+    """DewPoint sensor."""
 
     def __init__(self, hass: HomeAssistant, device_id: str, name: str, entity_dry_temp: str, entity_rel_hum: str) -> None:
         """Initialize the sensor."""
         self.hass = hass
         self._state = None
         self.entity_id = async_generate_entity_id(
-            ENTITY_ID_FORMAT, device_id, hass=hass
+            ENTITY_ID_FORMAT, device_id, hass=hass,
         )
         self._name = name
 
@@ -60,28 +67,28 @@ class DewPointSensor(Entity):
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
         @callback
-        def sensor_state_listener(event: Event[EventStateChangedData]) -> None:
+        def sensor_state_listener(event: Event[EventStateChangedData]) -> None:  # noqa: ARG001
             """Handle device state changes."""
-            self.async_schedule_update_ha_state(True)
+            self.async_schedule_update_ha_state(force_refresh=True)
 
         @callback
-        def sensor_startup(event) -> None:
+        def sensor_startup(event: Event) -> None:
             """Update template on startup."""
             async_track_state_change_event(
                 self.hass, [self._entity_dry_temp, self._entity_rel_hum], sensor_state_listener)
 
-            self.async_schedule_update_ha_state(True)
+            self.async_schedule_update_ha_state(force_refresh=True)
 
         self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_START, sensor_startup)
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Return the name of the sensor."""
         return self._name
 
     @property
-    def icon(self):
+    def icon(self) -> str | None:
         """Return the icon of the sensor."""
         return 'mdi:thermometer-lines'
 
@@ -91,7 +98,7 @@ class DewPointSensor(Entity):
         return self._state
 
     @property
-    def unit_of_measurement(self) -> str:
+    def unit_of_measurement(self) -> str | None:
         """Return the unit of measurement."""
         return UnitOfTemperature.CELSIUS
 
