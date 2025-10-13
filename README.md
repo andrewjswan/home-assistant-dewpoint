@@ -27,7 +27,7 @@ This integration is part of the custom [HACS](https://hacs.xyz/) repository.
 2. Click **Add**
 3. Paste `andrewjswan/home-assistant-dewpoint` into the **URL** field
 4. Chose `Integration` as a **Category**
-5. **home-assistant-dewpoint** will appear in the list of available integrations. Install it normally.
+5. **Dewpoint** will appear in the list of available integrations. Install it normally.
 
 ### Method 2: 
 
