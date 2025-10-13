@@ -2,27 +2,24 @@
 
 import logging
 
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant import util
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.components.sensor import ENTITY_ID_FORMAT, PLATFORM_SCHEMA
 from homeassistant.const import (
     ATTR_FRIENDLY_NAME,
     ATTR_TEMPERATURE,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_SENSORS,
     EVENT_HOMEASSISTANT_START,
-    UnitOfTemperature)
+    UnitOfTemperature,
+)
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers.entity import Entity, async_generate_entity_id
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-import homeassistant.helpers.config_validation as cv
 
-from homeassistant.components.sensor import (
-    ENTITY_ID_FORMAT, PLATFORM_SCHEMA)
-
-if TYPE_CHECKING:
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,7 +37,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 
 async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_add_entities: AddEntitiesCallback, discovery_info: DiscoveryInfoType | None = None) -> None:
-    """Setup the sensor platform."""
+    """Set up the sensor platform."""
     for device, device_config in config[CONF_SENSORS].items():
         friendly_name = device_config.get(ATTR_FRIENDLY_NAME, device)
         entity_dry_temp = device_config.get(ATTR_TEMPERATURE)
@@ -107,16 +104,15 @@ class DewPointSensor(Entity):
         """Return dry temperature."""
         state = self.hass.states.get(entity)
 
-        if state is None or state.state is None or state.state == 'unknown':
-            _LOGGER.error('Unable to read temperature from unavailable sensor: %s', state.entity_id)
-            return
+        if state is None or state.state is None or state.state == "unknown":
+            _LOGGER.error("Unable to read temperature from unavailable sensor: %s", state.entity_id)
+            return None
 
         unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
         temp = util.convert(state.state, float)
 
         if temp is None:
-            _LOGGER.error("Unable to parse temperature sensor %s with state:"
-                          " %s", state.entity_id, state.state)
+            _LOGGER.error("Unable to parse temperature sensor %s with state: %s", state.entity_id, state.state)
             return None
 
         # convert to celsius if necessary
@@ -124,24 +120,22 @@ class DewPointSensor(Entity):
             return util.temperature.fahrenheit_to_celsius(temp)
         if unit == UnitOfTemperature.CELSIUS:
             return temp
-        _LOGGER.error("Temp sensor %s has unsupported unit: %s (allowed: %s, "
-                      "%s)", state.entity_id, unit, UnitOfTemperature.CELSIUS,
-                      UnitOfTemperature.FAHRENHEIT)
+        _LOGGER.error("Temp sensor %s has unsupported unit: %s (allowed: %s, %s)", state.entity_id, unit, UnitOfTemperature.CELSIUS, UnitOfTemperature.FAHRENHEIT)
 
         try:
             return self.hass.config.units.temperature(
                 float(state.state), unit)
         except ValueError as ex:
-            _LOGGER.error('Unable to read temperature from sensor: %s', ex)
+            _LOGGER.error("Unable to read temperature from sensor: %s", ex)
 
     @callback
     def get_rel_hum(self, entity: str) -> float:
         """Return dry humidity."""
         state = self.hass.states.get(entity)
 
-        if state is None or state.state is None or state.state == 'unknown':
+        if state is None or state.state is None or state.state == "unknown":
             _LOGGER.error('Unable to read relative humidity from unavailable sensor: %s', state.entity_id)
-            return
+            return None
 
         unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
         hum = util.convert(state.state, float)
