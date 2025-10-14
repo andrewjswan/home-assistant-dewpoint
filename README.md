@@ -9,9 +9,10 @@
 
 ## Description
 
+![Dewpoint](logo.png)
+
 Home Assistant custom component to calculate dew point using temperature and humidity sensors.
 Calculated using [psychrolib](https://github.com/psychrometrics/psychrolib).
-
 
 ## Installation
 
