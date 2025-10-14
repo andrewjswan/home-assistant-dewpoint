@@ -3,6 +3,7 @@
 import logging
 
 import homeassistant.helpers.config_validation as cv
+import psychrolib
 import voluptuous as vol
 from homeassistant import util
 from homeassistant.components.sensor import ENTITY_ID_FORMAT, PLATFORM_SCHEMA
@@ -211,8 +212,6 @@ class DewPointSensor(Entity):
         rel_hum = self.get_rel_hum(self._entity_rel_hum)
 
         if dry_temp is not None and rel_hum is not None:
-            import psychrolib
-
             psychrolib.SetUnitSystem(psychrolib.SI)
             tdewpoint = psychrolib.GetTDewPointFromRelHum(dry_temp, rel_hum)
             self._state = round(tdewpoint, 1)
