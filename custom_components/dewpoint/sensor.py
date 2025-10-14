@@ -1,173 +1,217 @@
-"""
-Calculate Dew Point based on temperature and humidity sensors
-
-For more details about this platform, please refer to the documentation
-https://github.com/miguelangel-nubla/home-assistant-dewpoint
-"""
+"""Calculate Dew Point based on temperature and humidity sensors."""
 
 import logging
-import asyncio
 
-import voluptuous as vol
-
-
-from homeassistant import util
-from homeassistant.core import callback
-from homeassistant.const import (
-    TEMP_CELSIUS, TEMP_FAHRENHEIT, ATTR_FRIENDLY_NAME, ATTR_ENTITY_ID, CONF_SENSORS,
-    EVENT_HOMEASSISTANT_START, ATTR_UNIT_OF_MEASUREMENT, ATTR_TEMPERATURE)
-from homeassistant.helpers.entity import Entity, async_generate_entity_id
-from homeassistant.helpers.event import async_track_state_change
 import homeassistant.helpers.config_validation as cv
-
-from homeassistant.components.sensor import (
-    ENTITY_ID_FORMAT, PLATFORM_SCHEMA)
+import psychrolib
+import voluptuous as vol
+from homeassistant import util
+from homeassistant.components.sensor import ENTITY_ID_FORMAT, PLATFORM_SCHEMA
+from homeassistant.const import (
+    ATTR_FRIENDLY_NAME,
+    ATTR_TEMPERATURE,
+    ATTR_UNIT_OF_MEASUREMENT,
+    CONF_SENSORS,
+    EVENT_HOMEASSISTANT_START,
+    UnitOfTemperature,
+)
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.entity import Entity, async_generate_entity_id
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 _LOGGER = logging.getLogger(__name__)
 
-CONF_REL_HUM = 'rel_hum'
+CONF_REL_HUM = "rel_hum"
 
-SENSOR_SCHEMA = vol.Schema({
-    vol.Optional(ATTR_FRIENDLY_NAME): cv.string,
-    vol.Required(ATTR_TEMPERATURE): cv.entity_id,
-    vol.Required(CONF_REL_HUM): cv.entity_id
-})
+MIN_HUMIDITY = 0
+MAX_HUMIDITY = 100
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_SENSORS): cv.schema_with_slug_keys(SENSOR_SCHEMA),
-})
+SENSOR_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_FRIENDLY_NAME): cv.string,
+        vol.Required(ATTR_TEMPERATURE): cv.entity_id,
+        vol.Required(CONF_REL_HUM): cv.entity_id,
+    },
+)
+
+PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
+    {
+        vol.Required(CONF_SENSORS): cv.schema_with_slug_keys(SENSOR_SCHEMA),
+    },
+)
 
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Setup the sensor platform."""
-
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,  # noqa: ARG001
+) -> None:
+    """Set up the sensor platform."""
     for device, device_config in config[CONF_SENSORS].items():
         friendly_name = device_config.get(ATTR_FRIENDLY_NAME, device)
         entity_dry_temp = device_config.get(ATTR_TEMPERATURE)
         entity_rel_hum = device_config.get(CONF_REL_HUM)
 
-        async_add_entities([DewPointSensor(hass, device, friendly_name, entity_dry_temp, entity_rel_hum)])
+        async_add_entities(
+            [DewPointSensor(hass, device, friendly_name, entity_dry_temp, entity_rel_hum)],
+        )
 
 
 class DewPointSensor(Entity):
+    """DewPoint sensor."""
 
-    def __init__(self, hass, device_id, name, entity_dry_temp, entity_rel_hum):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device_id: str,
+        name: str,
+        entity_dry_temp: str,
+        entity_rel_hum: str,
+    ) -> None:
         """Initialize the sensor."""
         self.hass = hass
         self._state = None
         self.entity_id = async_generate_entity_id(
-            ENTITY_ID_FORMAT, device_id, hass=hass
+            ENTITY_ID_FORMAT,
+            device_id,
+            hass=hass,
         )
         self._name = name
 
         self._entity_dry_temp = entity_dry_temp
         self._entity_rel_hum = entity_rel_hum
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Register callbacks."""
+
         @callback
-        def sensor_state_listener(entity, old_state, new_state):
+        def sensor_state_listener(event: Event[EventStateChangedData]) -> None:  # noqa: ARG001
             """Handle device state changes."""
-            self.async_schedule_update_ha_state(True)
+            self.async_schedule_update_ha_state(force_refresh=True)
 
         @callback
-        def sensor_startup(event):
+        def sensor_startup(event: Event) -> None:  # noqa: ARG001
             """Update template on startup."""
-            async_track_state_change(
-                self.hass, [self._entity_dry_temp, self._entity_rel_hum], sensor_state_listener)
+            async_track_state_change_event(
+                self.hass,
+                [self._entity_dry_temp, self._entity_rel_hum],
+                sensor_state_listener,
+            )
 
-            self.async_schedule_update_ha_state(True)
+            self.async_schedule_update_ha_state(force_refresh=True)
 
-        self.hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_START, sensor_startup)
+        self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, sensor_startup)
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Return the name of the sensor."""
         return self._name
 
     @property
-    def icon(self):
+    def icon(self) -> str | None:
         """Return the icon of the sensor."""
-        return 'mdi:thermometer-lines'
+        return "mdi:thermometer-lines"
 
     @property
-    def state(self):
+    def state(self) -> str | None:
         """Return the state of the sensor."""
         return self._state
 
     @property
-    def unit_of_measurement(self):
+    def unit_of_measurement(self) -> str | None:
         """Return the unit of measurement."""
-        return TEMP_CELSIUS
+        return UnitOfTemperature.CELSIUS
 
     @callback
-    def get_dry_temp(self, entity):
+    def get_dry_temp(self, entity: str) -> float:
+        """Return dry temperature."""
         state = self.hass.states.get(entity)
 
-        if state is None or state.state is None or state.state == 'unknown':
-            _LOGGER.error('Unable to read temperature from unavailable sensor: %s', state.entity_id)
-            return
+        if state is None or state.state is None or state.state == "unknown":
+            _LOGGER.error("Unable to read temperature from unavailable sensor: %s", state.entity_id)
+            return None
 
         unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
         temp = util.convert(state.state, float)
 
         if temp is None:
-            _LOGGER.error("Unable to parse temperature sensor %s with state:"
-                          " %s", state.entity_id, state.state)
+            _LOGGER.error(
+                "Unable to parse temperature sensor %s with state: %s",
+                state.entity_id,
+                state.state,
+            )
             return None
 
         # convert to celsius if necessary
-        if unit == TEMP_FAHRENHEIT:
+        if unit == UnitOfTemperature.FAHRENHEIT:
             return util.temperature.fahrenheit_to_celsius(temp)
-        if unit == TEMP_CELSIUS:
+        if unit == UnitOfTemperature.CELSIUS:
             return temp
-        _LOGGER.error("Temp sensor %s has unsupported unit: %s (allowed: %s, "
-                      "%s)", state.entity_id, unit, TEMP_CELSIUS,
-                      TEMP_FAHRENHEIT)
+        _LOGGER.error(
+            "Temp sensor %s has unsupported unit: %s (allowed: %s, %s)",
+            state.entity_id,
+            unit,
+            UnitOfTemperature.CELSIUS,
+            UnitOfTemperature.FAHRENHEIT,
+        )
 
         try:
-            return self.hass.config.units.temperature(
-                float(state.state), unit)
-        except ValueError as ex:
-            _LOGGER.error('Unable to read temperature from sensor: %s', ex)
+            return self.hass.config.units.temperature(float(state.state), unit)
+        except ValueError:
+            _LOGGER.exception("Unable to read temperature from sensor")
 
     @callback
-    def get_rel_hum(self, entity):
+    def get_rel_hum(self, entity: str) -> float:
+        """Return dry humidity."""
         state = self.hass.states.get(entity)
 
-        if state is None or state.state is None or state.state == 'unknown':
-            _LOGGER.error('Unable to read relative humidity from unavailable sensor: %s', state.entity_id)
-            return
+        if state is None or state.state is None or state.state == "unknown":
+            _LOGGER.error(
+                "Unable to read relative humidity from unavailable sensor: %s",
+                state.entity_id,
+            )
+            return None
 
         unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
         hum = util.convert(state.state, float)
 
         if hum is None:
-            _LOGGER.error("Unable to read relative humidity from sensor %s, state: %s",
-                          state.entity_id, state.state)
+            _LOGGER.error(
+                "Unable to read relative humidity from sensor %s, state: %s",
+                state.entity_id,
+                state.state,
+            )
             return None
 
-        if unit != '%':
-            _LOGGER.error("Humidity sensor %s has unsupported unit: %s %s",
-                          state.entity_id, unit, " (allowed: %)")
+        if unit != "%":
+            _LOGGER.error(
+                "Humidity sensor %s has unsupported unit: %s %s",
+                state.entity_id,
+                unit,
+                " (allowed: %)",
+            )
             return None
 
-        if hum > 100 or hum < 0:
-            _LOGGER.error("Humidity sensor %s is out of range: %s %s",
-                          state.entity_id, hum, "(allowed: 0-100%)")
+        if hum > MAX_HUMIDITY or hum < MIN_HUMIDITY:
+            _LOGGER.error(
+                "Humidity sensor %s is out of range: %s %s",
+                state.entity_id,
+                hum,
+                "(allowed: 0-100%)",
+            )
             return None
 
-        return hum/100
+        return hum / 100
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         """Fetch new state data for the sensor."""
-
         dry_temp = self.get_dry_temp(self._entity_dry_temp)
         rel_hum = self.get_rel_hum(self._entity_rel_hum)
-        
+
         if dry_temp is not None and rel_hum is not None:
-            import psychrolib
             psychrolib.SetUnitSystem(psychrolib.SI)
-            TDewPoint = psychrolib.GetTDewPointFromRelHum(dry_temp, rel_hum)
-            self._state = round(TDewPoint, 1)
+            tdewpoint = psychrolib.GetTDewPointFromRelHum(dry_temp, rel_hum)
+            self._state = round(tdewpoint, 1)
